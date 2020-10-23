@@ -2,6 +2,8 @@
 /Saved_Variables  
 /Immo_Notebooks 
 
+.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
