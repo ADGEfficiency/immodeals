@@ -1,6 +1,7 @@
 # Folders to be excluded 
 /Saved_Variables  
 /Immo_Notebooks 
+*.ipynb
 
 .DS_Store
 
