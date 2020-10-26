@@ -186,6 +186,7 @@ def get_features_one_page(url, postcode, city, price, region, type_of_good):
     features = {}
 
     # Postcode and cities were scraped on the general reseach page
+    features['page_url'] = url
     features['postcode'] = postcode
     features['city'] = city
     features['type_of_good'] = type_of_good
