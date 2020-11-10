@@ -74,7 +74,7 @@ def parsed_protected_page(url):
     # Use the headless option to avoid opening a new browser window
     # source: https://towardsdatascience.com/web-scraping-with-selenium-d7b6d8d3265a
     options = webdriver.ChromeOptions()
-    options.add_argument("headless")
+    # options.add_argument("headless") # Selenium Webdriver was being detected afterwards with this option
     desired_capabilities = options.to_capabilities()
     driver = webdriver.Chrome(executable_path="/usr/local/bin/chromedriver", desired_capabilities=desired_capabilities)
 
@@ -104,8 +104,6 @@ def get_individual_urls(one_search_page_url, filter_opt=True):
 
     if filter_opt:
         # Do they talk of multiple goods in one page?
-
-
         # Final urls to return
         final_urls = []
         price_list = []
