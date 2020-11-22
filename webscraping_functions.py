@@ -10,6 +10,8 @@ from random import randint
 from datetime import datetime, date
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import SessionNotCreatedException
+from webdriver_manager.chrome import ChromeDriverManager
 
 import pdb
 
@@ -50,17 +52,24 @@ def get_realo_cities_links(realo_cities_url):
 
 
 # Get Results page based on the type of good, the region and the desired page_num
-def return_full_url(type_of_good, region, page_num=1):
+def return_full_url(type_of_good, region, page_num=1, for_sale=True):
     ''' Returns the immoweb url with regards to type_of_good, region and page_num
 
     :param type_of_good (string): 'appartement' or 'immeuble-de-rapport'
     :param region (string): one of the belgian provinces written in french
     :param page_num (int): page number of websearch
+    :param for_sale (boolean): True for properties for sales, False for properties to rent
     :return:
     '''
 
-    full_url = f"https://www.immoweb.be/fr/recherche/{type_of_good}/a-vendre/{region}"\
+    # url for properties for sale
+    if for_sale:
+        full_url = f"https://www.immoweb.be/fr/recherche/{type_of_good}/a-vendre/{region}"\
     f"/province?countries=BE&page={page_num}&orderBy=relevance"
+    else:
+        full_url = f"https://www.immoweb.be/fr/recherche/{type_of_good}/a-louer/{region}" \
+                   f"/province?countries=BE&page={page_num}&orderBy=relevance"
+
     return full_url
 
 
@@ -76,10 +85,16 @@ def parsed_protected_page(url):
     options = webdriver.ChromeOptions()
     # options.add_argument("headless") # Selenium Webdriver was being detected afterwards with this option
     desired_capabilities = options.to_capabilities()
-    driver = webdriver.Chrome(executable_path="/usr/local/bin/chromedriver", desired_capabilities=desired_capabilities)
 
+    #try:
+    driver = webdriver.Chrome(executable_path="/usr/local/bin/chromedriver", desired_capabilities=desired_capabilities)
+        # Get Page with Url
+    #    driver.get(url)
+    #except SessionNotCreatedException:
+    #driver = webdriver.Chrome(ChromeDriverManager().install(), desired_capabilities=desired_capabilities)
     # Get Page with Url
-    get_url = driver.get(url)
+
+    driver.get(url)
 
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     driver.quit()
@@ -199,6 +214,15 @@ def get_features_one_page(url, postcode, city, price, region, type_of_good):
     except:
         features["immoweb_code"] = ""
 
+    # Get Adresse of the property
+    try:
+        adress_property = soup.select('.classified__information--address-clickable')[0].get_text().strip().split("\n")
+        features["street_property"] = adress_property[0]
+        features["street_number_property"] = adress_property[1].strip()
+    except:
+        features["street_property"] = ""
+        features["street_number_property"] = ""
+
     # Get the description of good
     try:
         description = soup.select(".classified__description")[0].get_text(strip=True)
@@ -233,11 +257,12 @@ def get_features_one_page(url, postcode, city, price, region, type_of_good):
 
 
 
-def get_urls_from_searchpages(type_of_good, region, filter_opt=True):
+def get_urls_from_searchpages(type_of_good, region, filter_opt=True, for_sale=True):
     '''
     :param type_of_good (string): 'appartement' or 'immeuble-de-rapport'
     :param region (string): region that will be scraped
     :param filter_opt (boolean): True : Filter out the properties with several prices or prices ranges in title
+    :param for_sale (boolean): True for properties for sales, False for properties to rent
     :return:
     '''
 
@@ -248,11 +273,11 @@ def get_urls_from_searchpages(type_of_good, region, filter_opt=True):
     all_cities = []
 
     # Getting the total amount of search pages found with specific query
-    full_url = return_full_url(type_of_good, region)
+    full_url = return_full_url(type_of_good, region, for_sale)
     nb_pages = get_nb_pages(full_url)
 
     for nb_page in range(1, nb_pages + 1):
-        search_url = return_full_url(type_of_good, region, nb_page)
+        search_url = return_full_url(type_of_good, region, nb_page, for_sale)
         # Per page getting urls and linked info
         try:
             urls, prices, postcodes, cities = get_individual_urls(search_url)
@@ -269,21 +294,22 @@ def get_urls_from_searchpages(type_of_good, region, filter_opt=True):
     return all_urls, all_prices, all_postcodes, all_cities
 
 
-def scrape_features_from_search_urls(type_of_good, region, list_codes_already_scraped):
+def scrape_features_from_search_urls(type_of_good, region, list_codes_already_scraped, for_sale=True):
     ''' Returns the features scraped for 1 region
 
     :param type_of_good (string): 'appartement' or 'immeuble-de-rapport'
     :param region (string): region that will be scraped
     :param list_codes_already_scraped (list): list of codes of houses that have already been scraped before
         in order to avoid scraping them again.
+    :param for_sale (boolean): True for properties for sales, False for properties to rent
     :return (list of dict): Returns a list of dictionnaries containing the features of individual properties
     '''
 
 
     # Get url of immoweb for first Search page
-    full_url = return_full_url(type_of_good, region)
+    full_url = return_full_url(type_of_good, region, for_sale)
     # Get list of result urls of across the nb_pages
-    urls, prices, postcodes, cities = get_urls_from_searchpages(type_of_good, region)
+    urls, prices, postcodes, cities = get_urls_from_searchpages(type_of_good, region, for_sale)
     ## Get the features of the different found urls
     feature_list = []
 
@@ -312,18 +338,24 @@ def scrape_features_from_search_urls(type_of_good, region, list_codes_already_sc
     return feature_list
 
 
-def scraping_diff_regions(type_of_good, list_of_regions, list_codes_already_scraped):
+def scraping_diff_regions(type_of_good, list_of_regions, list_codes_already_scraped, for_sale=True):
     ''' Returns a list of dictionnaries with the individual house features
 
     :param type_of_good (string): 'appartement' or 'immeuble-de-rapport'
     :param list_of_regions (string): list of regions that have to be scraped
     :param list_immoweb_code_already_done (string): list of codes of houses that have already been scraped before
         in order to avoid scraping them again.
+    :param for_sale (boolean): True for properties for sales, False for properties to rent
     :return (list): list of dictionnaries with the individual house features
     '''
 
     # List that will contain all the feature dictionnaries scraped
     features_list = []
+
+    if for_sale:
+        name = 'sales'
+    else:
+        name = 'rentals'
 
     # Today's date for name of saved files
     date = "{:%Y%m%d}".format(datetime.now())
@@ -332,7 +364,7 @@ def scraping_diff_regions(type_of_good, list_of_regions, list_codes_already_scra
 
     for region in list_of_regions:
         start_region = time()
-        region_feature_list = scrape_features_from_search_urls(type_of_good, region, list_codes_already_scraped)
+        region_feature_list = scrape_features_from_search_urls(type_of_good, region, list_codes_already_scraped, for_sale)
         features_list+=region_feature_list
         # Computing the time need to scrape the full region
         elapsed_time = time() - start_region
@@ -342,7 +374,7 @@ def scraping_diff_regions(type_of_good, list_of_regions, list_codes_already_scra
         # Saving Checkpoints for each Region
         # Converting list of dictionaries to a Pandas DataFrame
         region_property_features_df = pd.DataFrame(region_feature_list)
-        with open(f'Saved_Variables/{date}_{region}_{type_of_good.replace("-","_")}_features.pkl', 'wb') as f:
+        with open(f'Saved_Variables/{date}_{name}_{region.replace("-","_")}_{type_of_good.replace("-","_")}_features.pkl', 'wb') as f:
             pickle.dump(region_property_features_df, f)
 
     # Computing the amount of time taken by the scraping action
@@ -356,7 +388,7 @@ def scraping_diff_regions(type_of_good, list_of_regions, list_codes_already_scra
     property_features_df = pd.DataFrame(features_list)
 
     # Saving the Pandas DataFrame in Folder Saved_Variables
-    with open(f'Saved_Variables/{date}_all_regions_{type_of_good.replace("-","_")}_features.pkl', 'wb') as f:
+    with open(f'Saved_Variables/{date}_{name}_all_regions_{type_of_good.replace("-","_")}_features.pkl', 'wb') as f:
         pickle.dump(property_features_df, f)
     return features_list
 
