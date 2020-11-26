@@ -287,7 +287,7 @@ def draw_room_repartition(list_df, type_of_good, size):
         proportion_barplot(df_and_name[0], df_and_name[1], type_of_good, energy_class=False, ordered=False, \
                                create_fig=False)
 
-def draw_other_features(list_df, list_features, type_of_good, size=[20, 10], nrows=2, ncols=2):
+def draw_other_features(list_df, list_features, type_of_good, size=[20, 10], nrows=2, ncols=2,tilt=30):
     plt.figure(figsize=size)
 
     features = list_features
@@ -295,7 +295,7 @@ def draw_other_features(list_df, list_features, type_of_good, size=[20, 10], nro
     for i, df_and_name in enumerate(zip(list_df, features)):
         plt.subplot(nrows, ncols, i + 1)
         proportion_barplot(df_and_name[0], df_and_name[1], type_of_good, energy_class=False, ordered=False, \
-                               create_fig=False)
+                               create_fig=False,tilt=tilt)
 
 
 def violin_plot(df, feature_name_x, feature_name_y, type_of_good='building', size=[15, 6], ylabel='', tilt=30,

@@ -99,7 +99,8 @@ def imputing_missing_val(df_new, df_type, list_col_names, strategy='most_frequen
 
 
 # Cleaning Function for Buildings:
-def cleaning_df(df, df_type='train', type_of_good='building', na_imputer_most_freq=None, na_imputer_median=None):
+def cleaning_df(df, df_type='train', type_of_good='building', na_imputer_most_freq=None, na_imputer_median=None,
+                qtl_cadastre=None, qtl_terrain=None):
     ''' Returns a cleaned DataFrame
 
     :param df (pd.DataFrame): DataFrame to be cleaned
@@ -112,10 +113,10 @@ def cleaning_df(df, df_type='train', type_of_good='building', na_imputer_most_fr
 
     # First Column Selection
     if type_of_good == 'building':
-        selected_cols = ['immoweb_code', 'price', 'region', 'postcode', 'description', 'type_de_zone_inondable',
-                        'salles_de_bains', 'double_vitrage', 'chambres', 'revenu_cadastral', 'type_de_chauffage',
-                        'surface_du_terrain', 'surface_habitable', 'etat_du_batiment', 'annee_de_construction',
-                        'facades', 'classe_energetique']
+        selected_cols = ['immoweb_code', 'price', 'region', 'postcode', 'street_property', 'street_number_property',
+                         'description', 'type_de_zone_inondable','salles_de_bains', 'double_vitrage', 'chambres',
+                         'revenu_cadastral', 'type_de_chauffage','surface_du_terrain', 'surface_habitable',
+                         'etat_du_batiment', 'annee_de_construction', 'facades', 'classe_energetique']
 
         # List of columns for imputation : "most_frequent"
         list_col_names = ['salles_de_bains', 'etat_du_batiment', 'facades']
@@ -132,11 +133,12 @@ def cleaning_df(df, df_type='train', type_of_good='building', na_imputer_most_fr
 
 
     elif type_of_good == 'apartment':
-        selected_cols = ['immoweb_code', 'price', 'region', 'postcode', 'description', 'type_de_zone_inondable',
-                         'salles_de_bains', 'double_vitrage', 'chambres', 'revenu_cadastral','type_de_chauffage',
-                         'surface_habitable', 'etat_du_batiment', 'annee_de_construction', 'facades',
-                         'classe_energetique', 'terrasse', 'salles_de_douche', 'toilettes', 'parkings_exterieurs',
-                         'parkings_interieurs', 'cave', 'ascenseur', 'nombre_d_etages', 'etage']
+        selected_cols = ['immoweb_code', 'price', 'region', 'postcode', 'street_property', 'street_number_property',
+                         'description', 'type_de_zone_inondable','salles_de_bains', 'double_vitrage', 'chambres',
+                         'revenu_cadastral','type_de_chauffage','surface_habitable', 'etat_du_batiment',
+                         'annee_de_construction', 'facades','classe_energetique', 'terrasse', 'salles_de_douche',
+                         'toilettes', 'parkings_exterieurs','parkings_interieurs', 'cave', 'ascenseur',
+                         'nombre_d_etages', 'etage']
 
         # List of columns for imputation : "most_frequent"
         list_col_names = ['salles_de_bains', 'toilettes', 'etat_du_batiment', 'facades', 'etage', 'nombre_d_etages']
@@ -164,6 +166,9 @@ def cleaning_df(df, df_type='train', type_of_good='building', na_imputer_most_fr
         # The missing columns will be added filled with np.nan
         df_new = df.reindex(columns=selected_cols)
 
+
+    ### DROP DUPLICATES if any
+    df_new = df_new.drop_duplicates(subset='immoweb_code', keep='first')
 
     ### CLEANING AND GROUPING SOME STRING EXPRESSIONS
     ## "type_de_zone_inondable" : 0 for non-flood zone and 1 otherwise
@@ -196,9 +201,16 @@ def cleaning_df(df, df_type='train', type_of_good='building', na_imputer_most_fr
         if type_of_good == 'building':
             qtl_terrain = quantiles_calc(df_new, 'surface_du_terrain')
 
+    elif df_type == 'test':
+        qtl_cadastre = qtl_cadastre
+
+        if type_of_good == 'building':
+            qtl_terrain = qtl_terrain
+
     df_new['revenu_cadastral'] = df_new['revenu_cadastral'].apply(lambda x: \
                                                                       group_to_quantiles(int(x), qtl_cadastre) \
                                                                           if isinstance(x, str) else x)
+
     if type_of_good == 'building':
         df_new['surface_du_terrain'] = df_new['surface_du_terrain'].apply(lambda x: \
                                                                           group_to_quantiles(int(x), qtl_terrain) \
@@ -234,17 +246,17 @@ def cleaning_df(df, df_type='train', type_of_good='building', na_imputer_most_fr
 
     ### IMPUTATION STRATEGIES
     ## Apply imputation for facades, salles_de_bains, toilettes and etat_du_batiment
-    df_new, imputer = imputing_missing_val(df_new, df_type, list_col_names, strategy='most_frequent', \
+    df_new, imp_most_freq = imputing_missing_val(df_new, df_type, list_col_names, strategy='most_frequent', \
                                            na_imputer=na_imputer_most_freq)
 
     # Apply median imputation for the surface_habitable
-    df_new, surf_imputer = imputing_missing_val(df_new, df_type, list_median_col, strategy='median', \
+    df_new, imp_median = imputing_missing_val(df_new, df_type, list_median_col, strategy='median', \
                                                 na_imputer=na_imputer_median)
 
     ## TYPE CONVERSION
     df_new[int_cols] = df_new[int_cols].astype('int')
 
-    return df_new
+    return imp_most_freq, imp_median, qtl_cadastre, qtl_terrain, df_new
 
 
 def encoding_df(cleaned_df, type="train", type_of_good='building'):
@@ -296,15 +308,17 @@ def remove_na(df, df_type='train', type_of_good='building', na_imputer_most_freq
     :param type_of_good (string): 'building' or 'apartment'
     :param na_imputer_most_freq (Imputer): None if df_type == "train" else imputer fitted on the train set
     :param na_imputer_median (Imputer): None if df_type == "train" else imputer fitted on the train set
-    :return (pd.DataFrame): returns a cleaned DataFrame (cleaned string notations, no missing values, adapted datatypes)
+    :return (Imputer, pd.DataFrame): returns an imputer (if df_type=="Train", the one computed on the Train set
+                                    and that with be used on the test set, and a cleaned DataFrame
+                                    (cleaned string notations, no missing values, adapted datatypes)
     '''
 
     # First Column Selection
     if type_of_good == 'building':
-        selected_cols = ['immoweb_code', 'price', 'region', 'postcode', 'description', 'type_de_zone_inondable',
-                         'salles_de_bains', 'double_vitrage', 'chambres', 'revenu_cadastral', 'type_de_chauffage',
-                         'surface_du_terrain', 'surface_habitable', 'etat_du_batiment', 'annee_de_construction',
-                         'facades', 'classe_energetique']
+        selected_cols = ['immoweb_code', 'price', 'region', 'postcode', 'street_property', 'street_number_property',
+                         'description', 'type_de_zone_inondable', 'salles_de_bains', 'double_vitrage', 'chambres',
+                         'revenu_cadastral', 'type_de_chauffage','surface_du_terrain', 'surface_habitable',
+                         'etat_du_batiment', 'annee_de_construction', 'facades', 'classe_energetique']
 
         # List of columns for imputation : "most_frequent"
         list_col_names = ['chambres', 'salles_de_bains', 'etat_du_batiment', 'facades', 'annee_de_construction']
@@ -318,11 +332,12 @@ def remove_na(df, df_type='train', type_of_good='building', na_imputer_most_freq
 
 
     elif type_of_good == 'apartment':
-        selected_cols = ['immoweb_code', 'price', 'region', 'postcode', 'description', 'type_de_zone_inondable',
-                         'salles_de_bains', 'double_vitrage', 'chambres', 'revenu_cadastral', 'type_de_chauffage',
-                         'surface_habitable', 'etat_du_batiment', 'annee_de_construction', 'facades',
-                         'classe_energetique', 'terrasse', 'salles_de_douche', 'toilettes', 'parkings_exterieurs',
-                         'parkings_interieurs', 'cave', 'ascenseur', 'nombre_d_etages', 'etage']
+        selected_cols = ['immoweb_code', 'price', 'region', 'postcode', 'street_property', 'street_number_property',
+                         'description', 'type_de_zone_inondable','salles_de_bains', 'double_vitrage', 'chambres',
+                         'revenu_cadastral', 'type_de_chauffage', 'surface_habitable', 'etat_du_batiment',
+                         'annee_de_construction', 'facades', 'classe_energetique', 'terrasse', 'salles_de_douche',
+                         'toilettes', 'parkings_exterieurs', 'parkings_interieurs', 'cave', 'ascenseur',
+                         'nombre_d_etages', 'etage']
 
         # List of columns for imputation : "most_frequent"
         list_col_names = ['chambres', 'etat_du_batiment', 'facades', 'etage', 'nombre_d_etages',
@@ -347,6 +362,9 @@ def remove_na(df, df_type='train', type_of_good='building', na_imputer_most_freq
         # If not all preselected columns are in the given argument dataframe
         # The missing columns will be added filled with np.nan
         df_new = df.reindex(columns=selected_cols)
+
+    ### DROP DUPLICATES if any
+    df_new = df_new.drop_duplicates(subset='immoweb_code', keep='first')
 
     ### CLEANING AND GROUPING SOME STRING EXPRESSIONS
     ## "type_de_zone_inondable" : 0 for non-flood zone and 1 otherwise
@@ -401,7 +419,7 @@ def remove_na(df, df_type='train', type_of_good='building', na_imputer_most_freq
     ## TYPE CONVERSION
     df_new[int_cols] = df_new[int_cols].astype('int')
 
-    return df_new
+    return imputer, df_new
 
 def encoding_4_exploration(cleaned_df, type="train", type_of_good='building'):
     ''' Returns: an DataFrame where Categorical variables are encoded
