@@ -3,17 +3,19 @@ import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output
 import plotly.graph_objs as go
+import plotly.express as px
 import pickle
+import json
 import pandas as pd
 from dash_helper_functions import *
 
 
 ## VARIABLES
 # Loading DataFrames
-with open('../Saved_Variables/20201122_BUILDINGS_df.pkl', 'rb') as f:
+with open('../Saved_Variables/20201122_BUILDINGS_df_DASH.pkl', 'rb') as f:
     buildings = pickle.load(f)
 
-with open('../Saved_Variables/20201122_FLATS_df.pkl', 'rb') as f:
+with open('../Saved_Variables/20201122_FLATS_df_DASH.pkl', 'rb') as f:
     flats = pickle.load(f)
 
 
@@ -29,15 +31,6 @@ heatmap_col = ['region', 'classe_energetique', 'chambres', 'salles_de_bains', 'f
 
 ### DASH APPLICATION
 app = dash.Dash()
-
-dash_colors = {
-    'background': '#111111',
-    'text': '#BEBEBE',
-    'grid': '#333333',
-    'red': '#BF0000',
-    'blue': '#466fc2',
-    'green': '#5bc246'
-}
 
 ################################################################################
 ############################## THE LAYOUTS
@@ -96,17 +89,15 @@ html.Div(className='globalDiv', children=[
                 dcc.Graph(id='region_barchart'),
                 html.I('Repartition across energy classes'),
                 dcc.Graph(id='en_class_barchart')
-            ], style={'border':'2px black solid', 'padding':5})
-        ], style={'border': '2px black solid', 'padding':10,
-            'width':'17%', 'height': '98%', 'display':'inline-block', 'vertical-align':'top'}),
-
-
+            ], style={'border': '2px black solid', 'padding':5})
+        ], style={'border': '2px black solid', 'padding': 10,
+                  'width': '17%', 'height': '98%', 'display': 'inline-block', 'vertical-align': 'top'}),
 
         ## RIGHT DIV
         html.Div(className='rightDiv', children=['Right Side DIV 4/5 width',
             # Div with the displays of how many lines are taken into account (function of initial selection)
             html.Div(className='displaysDiv', children=['Displays Div'
-            ], style={'border':'2px black solid', 'padding':5}),
+            ], style={'border': '2px black solid', 'padding': 5}),
 
             # Div with the univariate graphs: histogram/boxplots with possible selection of outliers
             html.Div(className='oneDimDiv', children=[
@@ -139,10 +130,25 @@ html.Div(className='globalDiv', children=[
 
                     dcc.Graph(id='histogram'),
                     dcc.Graph(id='boxplot')
-                ], style={'border':'2px black solid', 'padding':5,'width':'54%', 'display':'inline-block'}),
+                ], style={'border': '2px black solid', 'padding': 5,
+                          'width': '54%', 'display': 'inline-block'}),
+                html.Div(className='outlierInfo', children=['Info Outliers',
+                    html.Div([
+                        #html.Img(id='hover-image', src='children', height=300)
+                        html.Pre(id="hover-image", style={'padding': 15, 'whiteSpace': 'pre-line', 'height':300,
+                                                          'whiteSpace': 'pre-line'})
+                    ], style={'paddingTop': 10}),
+                    html.Div(
+                        html.Pre(id="hover-data", style={'padding': 15, 'whiteSpace': 'pre-line'}),
+                    style={})
 
-                html.Div(className='outlierInfo', children=['Info Outliers'
-                ], style={'border': '2px black solid', 'padding': 5, 'width': '43%','display': 'inline-block', 'vertical-align': 'top'})
+
+
+
+
+
+                ], style={'border': '2px black solid', 'padding': 5, 'width': '43%','display': 'inline-block',
+                          'vertical-align': 'top'})
 
             ],style={'border':'2px black solid', 'padding':5}),
 
@@ -189,8 +195,6 @@ html.Div(className='globalDiv', children=[
             dcc.Graph(id='regionPriceSqrMBoxplot')
         ], style={}),
 
-####################
-        # Div with the heatmap
         html.Div(className='mapsDiv', children=[
             html.Div(className='densityheatmapDiv', children=[
                 html.Div(className='heatDropdownsDiv', children=[
@@ -218,9 +222,9 @@ html.Div(className='globalDiv', children=[
             ], style={'display': 'inline-block', 'width': '48%', 'border': '2px black solid', 'vertical-align': 'bottom'})
         ], style={'border': '2px black solid'}),
 
-        html.Div(id='chloroplethDiv', children=[], style={
-
-        })
+        html.Div(id='choroplethDiv', children=[
+            dcc.Graph(id='choroplethGraph')
+        ], style={})
 
 
 ####################
@@ -333,9 +337,35 @@ def update_boxplot(type_of_good, na_values, outliers_values, feature, binsize, m
         'layout': go.Layout(
             margin={'l': 5, 'r': 25, 'b': 35, 't': 30, 'pad': 4},
             xaxis={'title': feature_name, 'type': scale},
-            height=200
+            height=200,
+            hovermode='closest'
         )
     }
+
+# Outlier info
+@app.callback(Output('hover-image', 'children'),
+              [Input('global_data', 'value'), Input('missing_values', 'value'), Input('outliers', 'value'),
+               Input('xhist','value'), Input('boxplot', 'hoverData')])
+def return_outlier_image(type_of_good,  na_values, outliers_values, feature, hoverData):
+    df = help_histogram(type_of_good, na_values, outliers_values, feature)
+    index = hoverData["points"][0]['pointIndex']
+    if index == 0:
+        return "No image found, Hover an outlier point on the Boxplot on the left"
+    else:
+        image_path=df.loc[index, 'picture_url']
+        return f'Image url : {image_path}'
+
+@app.callback(Output('hover-data', 'children'),
+              [Input('global_data', 'value'), Input('missing_values', 'value'), Input('outliers', 'value'),
+               Input('xhist','value'), Input('boxplot', 'hoverData')])
+def return_outlier_description(type_of_good,  na_values, outliers_values, feature, hoverData):
+    df = help_histogram(type_of_good, na_values, outliers_values, feature)
+    index = hoverData["points"][0]['pointIndex']
+
+    if index == 0:
+        return "Hover an outlier point on the Boxplot on the left"
+    else:
+        return f'Price of the property is : {df.loc[index,"price"]}\n Description: \n {df.loc[index,"description"]}'
 
 # BARCHART
 @app.callback(
@@ -552,6 +582,41 @@ def update_heatmap(type_of_good, missing_values, outliers, feature_x, feature_y)
         )
     }
 
+
+@app.callback(
+    Output('choroplethGraph', 'figure'),
+    [Input('global_data', 'value'), Input('outliers', 'value')]
+)
+def update_choropleth(type_of_good, outliers):
+    geojson_file, prepared_df = help_choropleth(type_of_good, outliers)
+
+
+    #fig = px.choropleth(prepared_df, locations='id', geojson=geojson_file, color='price_per_sqr_m',
+    #                    scope='europe')
+    #fig.update_geos(fitbounds="locations", visible=False)
+
+    #return fig
+
+
+    traces = [
+        go.Choroplethmapbox(
+            locations=prepared_df['id'].tolist(),  # Spatial coordinates
+            geojson=geojson_file,
+            z=prepared_df['price_per_sqr_m'].tolist(),  # Data to be color-coded
+            #colorscale='Reds',
+            colorbar_title="price/m2",
+            visible=False
+        )
+    ]
+
+    return {
+        'data': traces,
+        'layout': go.Layout(
+            margin={'l': 85, 'r': 10, 'b': 85, 't': 20, 'pad': 4},
+            geo_scope='europe',
+            autosize=True
+        )
+    }
 
 
 

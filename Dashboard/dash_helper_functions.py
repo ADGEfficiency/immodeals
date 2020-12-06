@@ -1,13 +1,23 @@
 import pickle
 import pandas as pd
+import json
+import base64
 
 ## LOADING DATA
 # Loading DataFrames
-with open('../Saved_Variables/20201122_BUILDINGS_df.pkl', 'rb') as f:
+with open('../Saved_Variables/20201122_BUILDINGS_df_DASH.pkl', 'rb') as f:
     buildings = pickle.load(f)
 
-with open('../Saved_Variables/20201122_FLATS_df.pkl', 'rb') as f:
+with open('../Saved_Variables/20201122_FLATS_df_DASH.pkl', 'rb') as f:
     flats = pickle.load(f)
+
+belgian_municipalities = json.load(open("communes-belges.geojson", 'r'))
+
+with open('cp2ins.pkl', 'rb') as f:
+    cp2ins = pickle.load(f)
+
+with open('oldcp2ins.pkl', 'rb') as f:
+    oldcp2ins = pickle.load(f)
 
 # Adding type_of_good columns and joining the 2 dataframes
 buildings['type_of_good'] = 'building'
@@ -161,6 +171,46 @@ def prepa_features_heatmap(type_of_good, missing_values, outliers, df, feature_x
 
     return df
 
+def prepa_geojson_file(belgian_municipalities):
+    # Adding an id (comming from the properties), that will be used for the geomapping
+    for feature in belgian_municipalities['features']:
+        feature['id'] = feature['properties']['nsi']
+
+    return belgian_municipalities
+
+def convert_cp2ins(cp):
+    if cp in cp2ins.keys():
+        return cp2ins[cp]
+    elif cp in oldcp2ins.keys():
+        return oldcp2ins[cp]
+    elif cp[:2] == '20':
+        # after checking : '2020', '2018', '2030' not found but related to 2000
+        return cp2ins['2000']
+    elif cp == "3798":
+        return "73075"
+    else:
+        return
+
+
+def prepa_df_choropleth(df):
+    new_df = df.copy()
+
+    # adding price/m2
+    new_df = prep_price_pr_sqrmeter(new_df)
+    new_df['price'] = new_df['price'].astype('int')
+    # grouping by group_feature
+    grouped_df = new_df.groupby('postcode').median().reset_index()
+
+    # adding the id column for the link with the geojson file
+    grouped_df['id'] = grouped_df['postcode'].apply(lambda x: convert_cp2ins(x))
+
+    return grouped_df
+
+#def encode_image(image_file):
+#    encoded = base64.b64encode(open(image_file, 'rb').read())
+#    return 'data:image/png;base64,{}'.format(encoded.decode())
+
+
 ## GRAHP HELPER FUNCTIONS
 def help_barchart(type_of_good, na_values, outliers_values):
     if type_of_good == 'buildings':
@@ -300,6 +350,18 @@ def help_heatmap(type_of_good, missing_values, outliers, feature_x, feature_y):
     df = prepa_features_heatmap(type_of_good, missing_values, outliers, df, feature_x, feature_y, max_rooms, max_baths)
 
     return df
+
+def help_choropleth(type_of_good, outliers):
+    # NB: no choice of outliers as those are cleaned when computing the price/m2
+    if type_of_good == 'buildings':
+        df = buildings
+    elif type_of_good == 'flats':
+        df = flats
+
+    geojson_file = prepa_geojson_file(belgian_municipalities)
+    prepared_df = prepa_df_choropleth(df)
+
+    return geojson_file, prepared_df
 
 
 
