@@ -1,0 +1,7 @@
+jupyterlab
+selenium
+pandas==1.1.4
+bs4
+requests
+unidecode
+webdriver_manager

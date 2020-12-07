@@ -64,13 +64,11 @@ def return_full_url(type_of_good, region, page_num=1, for_sale=True):
 
     # url for properties for sale
     if for_sale:
-        full_url = f"https://www.immoweb.be/fr/recherche/{type_of_good}/a-vendre/{region}"\
+        return f"https://www.immoweb.be/fr/recherche/{type_of_good}/a-vendre/{region}"\
     f"/province?countries=BE&page={page_num}&orderBy=relevance"
     else:
-        full_url = f"https://www.immoweb.be/fr/recherche/{type_of_good}/a-louer/{region}" \
+        return f"https://www.immoweb.be/fr/recherche/{type_of_good}/a-louer/{region}" \
                    f"/province?countries=BE&page={page_num}&orderBy=relevance"
-
-    return full_url
 
 
 def parsed_protected_page(url):
@@ -393,7 +391,43 @@ def scraping_diff_regions(type_of_good, list_of_regions, list_codes_already_scra
     return features_list
 
 
+if __name__ == '__main__':
+    from pathlib import Path
+    from datetime import datetime
 
+    #  SALE ONLY
 
+    url = return_full_url('immeuble-de-rapport', 'namur', 1)
+    scraped = parsed_protected_page(url)
 
+    today = datetime.today().strftime('%Y-%m-%d')
+    HOME = Path.home() / 'immodeals'
+    DATAHOME = HOME / 'data' / 'raw' / 'sale' / today
+    DATAHOME.mkdir(exist_ok=True, parents=True)
 
+    with open(DATAHOME / 'sale-page.html', 'w') as fi:
+        fi.write(str(scraped))
+
+    #  this should take html or soup object as input
+    nb_pages = get_nb_pages(url)
+    urls, prices, postcodes, cities = get_individual_urls(url, False)
+
+    features = get_features_one_page(
+        urls[0],
+        postcodes[0],
+        cities[0],
+        prices[0],
+        'namur',
+        'immeuble-de-rapport'
+    )
+
+    DATAHOME = HOME / 'data' / 'processed' / 'sales' / today
+    DATAHOME.mkdir(exist_ok=True, parents=True)
+    def get_id_from_url(url):
+        return url.split('/')[-1]
+
+    import json
+    with open((DATAHOME / get_id_from_url(urls[0])).with_suffix('.json'), 'w') as fi:
+        json.dump(features, fi)
+
+    # TODO issue with text encoding
